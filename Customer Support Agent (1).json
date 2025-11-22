@@ -1,0 +1,636 @@
+{
+  "name": "Customer Support Agent",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "Support",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        208
+      ],
+      "id": "7b6adb69-c724-4f7a-964b-4323e6b87a32",
+      "name": "Webhook",
+      "webhookId": "3c352990-b541-4ab4-aead-af21ac22b484"
+    },
+    {
+      "parameters": {
+        "url": "=https://zoptics.zendesk.com/api/v2/tickets/{{ $json.body.ticket_id }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "zendeskApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        224,
+        208
+      ],
+      "id": "c84467da-7459-4026-bc99-f95ab43889c5",
+      "name": "HTTP Request",
+      "credentials": {
+        "zendeskApi": {
+          "id": "7a82368Uk9yY6CkE",
+          "name": "Zendesk account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "=https://zoptics.zendesk.com/api/v2/tickets/{{ $('Webhook').item.json.body.ticket_id }}/comments\n",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "zendeskApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        448,
+        208
+      ],
+      "id": "8a721f62-4d68-4eba-94ec-21914deb5b0f",
+      "name": "HTTP Request1",
+      "credentials": {
+        "zendeskApi": {
+          "id": "7a82368Uk9yY6CkE",
+          "name": "Zendesk account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $json;\nconst comment = data.comments[0];\n\nconst output = {\n  subject: data.subject,\n  secondary_subject: data.secondary_subject || null,  // add this new subject field; fallback to null if not present\n  conversation: comment.id,\n  role: comment.public ? \"public\" : \"internal\",\n  message_role: \"user\",\n  message: comment.body\n};\n\nreturn [output];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        672,
+        208
+      ],
+      "id": "aa52d530-33f6-434c-90ab-563943a6f992",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $json;  // this should be your full Zendesk ticket JSON input\n\nconst ticketInfo = `\n## Subject: ${data.subject}\n\n**Customer:** ${data.requester_id}\n\n**Support Staff:** ${data.assignee_id || 'Unassigned'}\n\n**Description:** \n${data.description || data.plain_body || ''}\n\n**Status:** ${data.status}\n**Priority:** ${data.priority || 'None'}\n**Created At:** ${data.created_at}\n**Updated At:** ${data.updated_at}\n`;\n\n// Output as an object with a `ticketInfo` key\nreturn [{\n  ticketInfo\n}];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        896,
+        208
+      ],
+      "id": "3fbbdfed-f1af-4716-b993-60477146abb8",
+      "name": "Code in JavaScript1"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $('HTTP Request').item.json.ticket.status }}",
+                    "rightValue": "open",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "1e206f1f-21a6-4284-80a5-c4eb93af4733"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "open"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "3a2f8a6b-5ad7-44f4-8eb5-66c67bc739d6",
+                    "leftValue": "={{ $('HTTP Request').item.json.ticket.status }}",
+                    "rightValue": "solved",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "ticket Solved"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.3,
+      "position": [
+        1120,
+        208
+      ],
+      "id": "bf177f33-b84c-4655-a545-c2cc4437753d",
+      "name": "Switch"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.ticketInfo }}",
+        "options": {
+          "systemMessage": "you are a helpful mail assistant.\n\nYour job is to read the ticket information and generate a response. To generate your response, please use the web search tool to find the answer.\n\nButput your answer as a properly formatted 350N ubject:\n\n4\n\nticket: (\n\n\"comment\" (\n\n\"Body\": \"Hi there, \\n\\n(Response to customer)\\n\\nThanks, InAI Customer Support Agent\",\n\n\"public\": true\n}\n}\n}\n\nImportant formatting notes:\n\n3. Use proper line breaks with \"II\" (double backslash) in your raw string output to ensure carrect escaping.\n\n2. Include a coma after \"Thanks,\"\n\n3. Ensure the 250% is properly formatted and valid.\n\n4. Keep your responses clear, concise, and helpful.\n\n5. Quote all 350N keys and string values properly.\n"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3,
+      "position": [
+        1344,
+        -96
+      ],
+      "id": "ef73c489-bbb1-4210-acec-e441900922c4",
+      "name": "AI Agent"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1,
+      "position": [
+        1424,
+        128
+      ],
+      "id": "c83596b4-1242-4057-9aee-962309c6ccec",
+      "name": "Google Gemini Chat Model",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "Qj2qgCOlkplL9oWi",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $json;\nreturn [{\n  ticket: data.ticket || data,\n  comment: data.comment || null,\n  body: data.comment?.Body || null,\n  public: data.comment?.public ?? null\n}];\n\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1696,
+        16
+      ],
+      "id": "bedf156a-30eb-46c4-af1f-db3714b80dbf",
+      "name": "Code in JavaScript2"
+    },
+    {
+      "parameters": {
+        "method": "PUT",
+        "url": "=https://zoptics.zendesk.com/api/v2/tickets/{{ $('Webhook').item.json.body.ticket_id }}\n",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "zendeskApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json.ticket }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        1920,
+        16
+      ],
+      "id": "8583bd3f-4f35-464b-abe1-a0d4e76ee1bb",
+      "name": "HTTP Request2",
+      "credentials": {
+        "zendeskApi": {
+          "id": "7a82368Uk9yY6CkE",
+          "name": "Zendesk account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "10sc12AgxZjQ9MhJmiJupmu6l5afUaFzV9z_obANJhQA",
+          "mode": "list",
+          "cachedResultName": "Zendesk Support",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/10sc12AgxZjQ9MhJmiJupmu6l5afUaFzV9z_obANJhQA/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Sheet1",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/10sc12AgxZjQ9MhJmiJupmu6l5afUaFzV9z_obANJhQA/edit#gid=0"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Date": "={{ $json.ticket.created_at }}",
+            "Ticket ID": "={{ $('Webhook').item.json.body.ticket_id }}",
+            "Ticket Subject": "={{ $('Code in JavaScript').item.json.conversation }}",
+            "Ticket Body": "={{ $('Code in JavaScript2').item.json.body }}",
+            "Respnse": "={{ $('Code in JavaScript2').item.json.comment }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "Date",
+              "displayName": "Date",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Ticket ID",
+              "displayName": "Ticket ID",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Ticket Body",
+              "displayName": "Ticket Body",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Ticket Subject",
+              "displayName": "Ticket Subject",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Respnse",
+              "displayName": "Respnse",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        2144,
+        16
+      ],
+      "id": "7801574d-8bfd-48bd-906c-1fcd311eec71",
+      "name": "Append row in sheet",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "OmLXUOoaEDQPg0td",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $('Code in JavaScript1').item.json.ticketInfo }}",
+        "options": {
+          "systemMessage": "Ahad the entire Ticket Bed generaтезисов FA lists and answer pairl that captures the essence of the entire sises. That CL FAO could have selly veled the first sessage from the customer in one shot.\n\nOutput in plain text\n\nQuestioni string\n\nAnswers strong"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3,
+      "position": [
+        1344,
+        416
+      ],
+      "id": "8d54e8be-7a5c-498a-a40f-04934f8bbf97",
+      "name": "AI Agent1"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1,
+      "position": [
+        1424,
+        640
+      ],
+      "id": "e11429bf-f3b0-4f4d-bb61-c18880520474",
+      "name": "Google Gemini Chat Model1",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "Qj2qgCOlkplL9oWi",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "10sc12AgxZjQ9MhJmiJupmu6l5afUaFzV9z_obANJhQA",
+          "mode": "list",
+          "cachedResultName": "Zendesk Support",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/10sc12AgxZjQ9MhJmiJupmu6l5afUaFzV9z_obANJhQA/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 428103485,
+          "mode": "list",
+          "cachedResultName": "Sheet2",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/10sc12AgxZjQ9MhJmiJupmu6l5afUaFzV9z_obANJhQA/edit#gid=428103485"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Date": "={{ $('HTTP Request').item.json.ticket.updated_at }}",
+            "Ticket ID": "={{ $('HTTP Request').item.json.ticket.id }}",
+            "Ticket Subject": "={{ $('HTTP Request').item.json.ticket.subject }}",
+            "Ticket Body": "={{ $('Code in JavaScript1').item.json.ticketInfo }}",
+            "FAQs": "={{ $json.output }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "Date",
+              "displayName": "Date",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Ticket ID",
+              "displayName": "Ticket ID",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Ticket Body",
+              "displayName": "Ticket Body",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Ticket Subject",
+              "displayName": "Ticket Subject",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "FAQs",
+              "displayName": "FAQs",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        1696,
+        416
+      ],
+      "id": "7df16cf7-5c3d-4dd0-858c-e5d25c4d1061",
+      "name": "Append row in sheet1",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "OmLXUOoaEDQPg0td",
+          "name": "Google Sheets account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request1": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript1": {
+      "main": [
+        [
+          {
+            "node": "Switch",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "AI Agent1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Gemini Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript2": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request2": {
+      "main": [
+        [
+          {
+            "node": "Append row in sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Gemini Chat Model1": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent1",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent1": {
+      "main": [
+        [
+          {
+            "node": "Append row in sheet1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "87b0b044-f720-4f6d-a6d8-4bfa4bfa1cce",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "21ffa506762b098762719e613b24dfaf1f9d4d479a3d916b888f664be5116e34"
+  },
+  "id": "gfnasgjpxCcfhY4R",
+  "tags": []
+}
